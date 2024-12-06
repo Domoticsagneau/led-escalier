@@ -1,10 +1,10 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <FastLED.h>
-#include <NeoPixelBus.h>
 #include <Adafruit_NeoPixel.h>
 #include <BH1750.h>
 
+#include "ESPAutoWiFiConfig.h"
 
 #define PIN_WS2812B  D4  // Le pin ESP8266 qui se connecte à WS2812B
 #define NUM_PIXELS     300  // Le nombre de LEDs (pixels) sur WS2812B
@@ -15,6 +15,7 @@
 #define SDA_BH1750 D1
 #define DETECT_DOWN D6
 #define DETECT_UP D7
+
 
 enum MOVE  {IDLE,UP,DOWN,BOTH,WAIT,OFF,LUMI};
 MOVE Move = IDLE;
@@ -30,6 +31,8 @@ Adafruit_NeoPixel RubanLed(NUM_PIXELS, PIN_WS2812B, NEO_GRB + NEO_KHZ800);
 // put function declarations here:
 
 BH1750 lightMeter;
+
+
 
 
 void ScanI2c()
@@ -161,6 +164,10 @@ void lumidown(uint8_t lumi)
 
 
 void loop() {
+  
+  if (ESPAutoWiFiConfigLoop()) {  // handle WiFi config webpages
+    return;  // skip the rest of the loop until config finished
+  }
   unsigned long currentMillis = millis();
   switch (Move) {
     case UP:   if (currentMillis - previousMillis >= DELAY_INTERVAL) {
