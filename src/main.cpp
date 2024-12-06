@@ -8,10 +8,21 @@
 
 #define PIN_WS2812B  D4  // Le pin ESP8266 qui se connecte à WS2812B
 #define NUM_PIXELS     300  // Le nombre de LEDs (pixels) sur WS2812B
-#define DELAY_INTERVAL 100
+#define WAIT_INTERVAL 5000
+#define DELAY_INTERVAL 500
+#define LUMI_INTERVAL 700
 #define SCL_BH1750 D2
 #define SDA_BH1750 D1
-#define DETECT D6
+#define DETECT_DOWN D6
+#define DETECT_UP D7
+
+enum MOVE  {IDLE,UP,DOWN,BOTH,WAIT,OFF,LUMI};
+MOVE Move = IDLE;
+unsigned long previousMillis = 0; 
+int num_pixel_up = 0;
+int num_pixel_down = 0;
+uint8_t Brigthness = 0;
+
 
 Adafruit_NeoPixel RubanLed(NUM_PIXELS, PIN_WS2812B, NEO_GRB + NEO_KHZ800);
 //TwoWire BusI2c() = TwoWire(0);
@@ -62,33 +73,36 @@ void ScanI2c()
 
 }
 
-void IRAM_ATTR Presence() {
-  bool etat_detecteur_l = digitalRead(DETECT);
-  if (etat_detecteur_l) Serial.println("Presence ok");
-  else Serial.println("Absence ok");
+void IRAM_ATTR Presence_down() {
+  bool etat_detecteur_l = digitalRead(DETECT_DOWN);
+  if (etat_detecteur_l) {
+    previousMillis = millis();    
+    Serial.println("Presence down ok");
+    if (Move == IDLE) Move = UP;
+    else Move = BOTH;
+    num_pixel_up = 0;
+  }
+  else Serial.println("Absence down ok");
   uint16_t lux = lightMeter.readLightLevel();
   Serial.print("Luminosité : ");
   Serial.print(lux);
   Serial.println(" lux");
 }
 
-
-
-
-void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(9600);
-  Serial.println("test les escalier");
-  pinMode(DETECT,INPUT);
-  RubanLed.begin(); // INITIALISER l'objet bande WS2812B (REQUIS)
-  RubanLed.setBrightness(25);
-  RubanLed.show();
-  Wire.begin(D1,D2);
-  ScanI2c();
-  lightMeter.begin();
-  attachInterrupt(digitalPinToInterrupt(DETECT), Presence, CHANGE);
-  //attachInterrupt(digitalPinToInterrupt(DETECT), Absence, FALLING);
-  
+void IRAM_ATTR Presence_up() {
+  bool etat_detecteur_l = digitalRead(DETECT_DOWN);
+  if (etat_detecteur_l) {
+    previousMillis = millis();
+    Serial.println("Presence up ok");
+    if (Move == IDLE) Move = DOWN;
+    else Move = BOTH;
+    num_pixel_down = NUM_PIXELS;
+  }
+  else Serial.println("Absence up ok");
+  uint16_t lux = lightMeter.readLightLevel();
+  Serial.print("Luminosité : ");
+  Serial.print(lux);
+  Serial.println(" lux");
 }
 
 void clear()
@@ -97,56 +111,92 @@ void clear()
   RubanLed.show();
 }
 
-void RampeUP()
-{
- clear();
- RubanLed.setBrightness(25);
- for (int pixel = 0; pixel < NUM_PIXELS; pixel++) { // for each pixel
-    RubanLed.setPixelColor(pixel, RubanLed.Color(255, 255, 255)); // it only takes effect if pixels.show() is called
-    RubanLed.show();   // send the updated pixel colors to the WS2812B hardware.
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  Serial.println("test les escalier");
+  pinMode(DETECT_DOWN,INPUT);
+  pinMode(DETECT_UP,INPUT);
+  
+  RubanLed.begin(); // INITIALISER l'objet bande WS2812B (REQUIS)
+  clear();
 
-    delay(DELAY_INTERVAL); // pause between each pixel
-  }
+  Wire.begin(D1,D2);
+  ScanI2c();
+  
+  lightMeter.begin();
+  attachInterrupt(digitalPinToInterrupt(DETECT_DOWN), Presence_down, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(DETECT_UP), Presence_up, FALLING);
+  
 }
 
-void RampeDown()
-{
-  Serial.println("rampe down");
- clear(); 
- RubanLed.setBrightness(25);
- for (unsigned int pixel = NUM_PIXELS; pixel > 0 ; pixel--) { // for each pixel
-    RubanLed.setPixelColor(pixel, RubanLed.Color(255, 255, 255,50)); // it only takes effect if pixels.show() is called
-    RubanLed.show();   // send the updated pixel colors to the WS2812B hardware.
 
-    delay(DELAY_INTERVAL); // pause between each pixel
-  }
+
+void RampeUP(int pixel)
+{
+  RubanLed.setPixelColor(pixel, RubanLed.Color(255, 255, 255,50)); // it only takes effect if pixels.show() is called
+  RubanLed.show();   // send the updated pixel colors to the WS2812B hardware.
 }
 
-void lumidown()
+void RampeDown(int pixel)
 {
-  for (unsigned int i=RubanLed.getBrightness();i>0;i--) {
-      RubanLed.setBrightness(i);
-      RubanLed.show();
-      delay(DELAY_INTERVAL);
-  }
+  RubanLed.setPixelColor(pixel, RubanLed.Color(255, 255, 255,50)); // it only takes effect if pixels.show() is called
+  RubanLed.show();   // send the updated pixel colors to the WS2812B hardware.
+}
 
+void RampeBoth(int pixelup,int pixeldown)
+{
+  RubanLed.setPixelColor(pixelup, RubanLed.Color(255, 255, 255,50)); // it only takes effect if pixels.show() is called
+  RubanLed.setPixelColor(pixeldown, RubanLed.Color(255, 255, 255,50)); // it only takes effect if pixels.show() is called 
+  RubanLed.show();   // send the updated pixel colors to the WS2812B hardware.
+
+}
+
+void lumidown(uint8_t lumi)
+{
+  RubanLed.setBrightness(lumi);
+  RubanLed.show();
 }
 
 
 
 void loop() {
-  // put your main code here, to run 
-  clear(); // set all pixel colors to 'off'. It only takes effect if pixels.show() is called
-
- 
-  //delay(200);
-
+  unsigned long currentMillis = millis();
+  switch (Move) {
+    case UP:   if (currentMillis - previousMillis >= DELAY_INTERVAL) {
+                  RampeUP(num_pixel_up++);
+                  previousMillis = currentMillis;
+               }
+               if (num_pixel_up >= NUM_PIXELS) Move = WAIT;
+               break;
+    case DOWN: if (currentMillis - previousMillis >= DELAY_INTERVAL) {
+                  RampeDown(num_pixel_down--);
+                  previousMillis = currentMillis;
+               }        
+               if (num_pixel_down <=0) Move = WAIT;
+               break;          
+    case WAIT: if (currentMillis - previousMillis >= WAIT_INTERVAL)  {
+                 previousMillis = currentMillis;
+                 Move = LUMI;
+                 Brigthness = RubanLed.getBrightness();
+               }
+               break;
+    case BOTH: if (currentMillis - previousMillis >= DELAY_INTERVAL) {
+                  RampeBoth(num_pixel_up++,num_pixel_down--);
+                  previousMillis = currentMillis;
+               }        
+               if (num_pixel_down <=0) num_pixel_down= 0;
+               if (num_pixel_up >= NUM_PIXELS) num_pixel_up = NUM_PIXELS;
+               if ((num_pixel_down <=0) && (num_pixel_up >= NUM_PIXELS)) Move = WAIT;
+               break;    
+    case LUMI: if (currentMillis - previousMillis >= LUMI_INTERVAL) {
+                  lumidown(Brigthness--);
+                  previousMillis = currentMillis;
+               }        
+               if (Brigthness <=0) Move = OFF;
+               break;     
+    case OFF: clear();Move=IDLE;break;
+    case IDLE: break;
+  }
   delay(200);
-/*  RampeUP();
-  delay(2000);     // off time
-  lumidown();
-  RampeDown();
-  delay(2000);
-  lumidown();
-  */
 }
